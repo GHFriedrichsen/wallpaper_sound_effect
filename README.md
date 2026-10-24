@@ -25,7 +25,8 @@ npm run build      # gera dist/, que é a pasta do wallpaper
    Wallpaper Engine.
 
 No painel do wallpaper dá para mudar a cidade do clima, °C/°F, relógio 12/24 h, quantidade e tamanho dos
-grãos, intensidade da reação ao áudio, brilho e se o mouse empurra os grãos.
+grãos, intensidade da reação ao áudio, brilho, se o mouse empurra os grãos e se o fundo segue a cor da
+música (desligado, aparece um seletor para escolher a cor do fundo).
 
 ## Estrutura
 

@@ -2,7 +2,7 @@ import './styles.css';
 import { startDemo } from './demo';
 import { loadFonts } from './fonts';
 import { layout, progressAspect, titleMaxAspect } from './layout';
-import { defaultPalette, ParticleField } from './particles/field';
+import { defaultPalette, ParticleField, type Palette, type RGB } from './particles/field';
 import { clockShape, coverShape, progressShape, titleShape, weatherShape } from './shapes';
 import { createAudioAnalyzer } from './wallpaper/audio';
 import { isWallpaperEngine } from './wallpaper/engine';
@@ -14,6 +14,9 @@ const settings = {
   city: 'São Paulo',
   unit: 'C' as 'C' | 'F',
   clock24: true,
+  /** desligado: o fundo fica em `bgColor` e só a poeira segue a capa */
+  musicBg: true,
+  bgColor: defaultPalette.bg,
 };
 /** fontes carregadas: antes disso o texto viraria grãos na fonte errada */
 let ready = false;
@@ -35,6 +38,9 @@ window.wallpaperPropertyListener = {
     if (p.audioreact) field.update({ audio: Number(p.audioreact.value) / 100 });
     if (p.glow) field.update({ glow: Boolean(p.glow.value) });
     if (p.mouse) field.update({ mouseForce: p.mouse.value ? 70 : 0 });
+    if (p.musicbg) settings.musicBg = Boolean(p.musicbg.value);
+    if (p.bgcolor) settings.bgColor = String(p.bgcolor.value).split(' ').map(Number).slice(0, 3) as RGB;
+    if (p.musicbg || p.bgcolor) applyPalette();
     if (ready) weather.configure(settings.city, settings.unit);
   },
   applyGeneralProperties(p) {
@@ -56,6 +62,15 @@ function updateClock() {
   clockText = text;
 }
 
+// ---------- cores ----------
+
+/** paleta da música atual (ou a padrão, sem música) */
+let musicPalette: Palette = defaultPalette;
+function applyPalette(p = musicPalette) {
+  musicPalette = p;
+  field.setPalette(settings.musicBg ? p : { ...p, bg: settings.bgColor });
+}
+
 // ---------- música ----------
 
 let track: Track | null = null;
@@ -73,13 +88,13 @@ const media: MediaHandlers = {
     const token = ++coverToken;
     if (!cover) {
       field.setShape('cover', null);
-      field.setPalette(defaultPalette);
+      applyPalette(defaultPalette);
       return;
     }
     field.setShape('cover', coverShape(cover.url));
     try {
       const [primary, secondary] = cover.colors ?? (await extractColors(cover.url));
-      if (token === coverToken) field.setPalette(paletteFrom(primary, secondary));
+      if (token === coverToken) applyPalette(paletteFrom(primary, secondary));
     } catch {
       // capa que não decodifica: fica a paleta anterior
     }
