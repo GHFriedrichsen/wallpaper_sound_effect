@@ -2,11 +2,13 @@
 // em vez de um logo por vez, várias formas ao mesmo tempo (relógio, capa, título, progresso, clima),
 // cada uma com sua parte dos grãos. Os grãos que sobram flutuam como poeira, e o áudio mexe em tudo.
 import {
-  AdditiveBlending,
+  AddEquation,
   BufferAttribute,
   BufferGeometry,
+  CustomBlending,
   DynamicDrawUsage,
-  NormalBlending,
+  OneFactor,
+  OneMinusSrcAlphaFactor,
   PerspectiveCamera,
   Points,
   Scene,
@@ -42,7 +44,7 @@ export interface FieldOptions {
   drift: number;
   /** multiplica a opacidade dos grãos soltos */
   dustAlpha: number;
-  /** soma as cores dos grãos que se sobrepõem (brilho); desligado, um grão só cobre o outro */
+  /** soma as cores dos grãos soltos e das formas com glow (brilho); desligado, um grão só cobre o outro */
   glow: boolean;
   /** intensidade da reação ao áudio (0 = desligada, 1 = normal) */
   audio: number;
@@ -51,8 +53,8 @@ export interface FieldOptions {
 }
 
 export const defaultFieldOptions: FieldOptions = {
-  count: 20000,
-  size: 3.2,
+  count: 60000,
+  size: 2.8,
   formSpeed: 16,
   mouseForce: 70,
   mouseRadius: 0.16,
@@ -86,6 +88,10 @@ export interface SlotOptions {
   react: number;
   /** tamanho do grão na forma, relativo ao solto (texto pede grão menor para ficar legível) */
   grain: number;
+  /** grãos sobrepostos somam brilho; desligado, cobrem um ao outro (a capa mantém as cores reais) */
+  glow: boolean;
+  /** fração dos grãos da frente que vai no contorno da forma (deixa as letras nítidas) */
+  outline: number;
 }
 
 export const defaultPalette: Palette = {
@@ -98,6 +104,8 @@ const CAM_Z = 12;
 const FOV = 40;
 const Z_NEAR = 3;
 const Z_FAR = -8;
+/** com mais poeira que isso, cada grão solto apaga um pouco: o fundo fica parecido com 10 mil ou com 100 mil grãos */
+const DUST_REF = 7000;
 
 const vertexShader = /* glsl */ `
   attribute vec3 aColor;
@@ -105,11 +113,14 @@ const vertexShader = /* glsl */ `
   attribute float aSize;
   attribute float aGrow;
   attribute float aFormSize;
+  attribute float aFormOver;
   uniform float uSize;
   uniform float uPixelRatio;
   uniform float uPulse;
+  uniform float uNoGlow;
   varying vec3 vColor;
   varying float vAlpha;
+  varying float vOver;
   void main() {
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
@@ -118,17 +129,21 @@ const vertexShader = /* glsl */ `
     gl_PointSize = uSize * aSize * grow * uPixelRatio * (${CAM_Z.toFixed(1)} / -mv.z);
     vColor = aColor;
     vAlpha = aAlpha;
+    // 0 = soma brilho, 1 = cobre (ver o blending no material)
+    vOver = max(aFormOver * aGrow, uNoGlow);
   }
 `;
 
 const fragmentShader = /* glsl */ `
   varying vec3 vColor;
   varying float vAlpha;
+  varying float vOver;
   void main() {
     float d = length(gl_PointCoord - 0.5);
     float a = smoothstep(0.5, 0.12, d) * vAlpha;
     if (a < 0.01) discard;
-    gl_FragColor = vec4(vColor, a);
+    // cor pré-multiplicada: com alfa de saída 0 o grão só soma (brilho), com alfa cheio ele cobre o que está atrás
+    gl_FragColor = vec4(vColor * a, a * vOver);
   }
 `;
 
@@ -187,6 +202,7 @@ export class ParticleField {
   private alpha = new Float32Array(0);
   private grow = new Float32Array(0);
   private formSize = new Float32Array(0);
+  private formOver = new Float32Array(0);
   private size = new Float32Array(0);
   private seed = new Float32Array(0);
   private baseAlpha = new Float32Array(0);
@@ -205,6 +221,7 @@ export class ParticleField {
   private energy = 0;
   private bassIn = 0;
   private energyIn = 0;
+  private dustCount = 0;
 
   private halfW = 1;
   private halfH = 1;
@@ -229,10 +246,15 @@ export class ParticleField {
       fragmentShader,
       transparent: true,
       depthWrite: false,
+      blending: CustomBlending,
+      blendEquation: AddEquation,
+      blendSrc: OneFactor,
+      blendDst: OneMinusSrcAlphaFactor,
       uniforms: {
         uSize: { value: this.opts.size },
         uPixelRatio: { value: this.renderer.getPixelRatio() },
         uPulse: { value: 1 },
+        uNoGlow: { value: this.opts.glow ? 0 : 1 },
       },
     });
     this.points = new Points(this.geometry, this.material);
@@ -260,7 +282,6 @@ export class ParticleField {
 
     this.resize();
     this.allocate(this.opts.count);
-    this.syncBlending();
 
     addEventListener('resize', this.resize);
     addEventListener('pointermove', this.onPointer, { passive: true });
@@ -286,7 +307,8 @@ export class ParticleField {
       return;
     }
     try {
-      const cloud = await sampleShape(source, { count: slot.budget, depth: slot.opts.depth });
+      const { depth, outline } = slot.opts;
+      const cloud = await sampleShape(source, { count: slot.budget, depth, outline });
       if (token === slot.token) this.assign(slot, cloud, morph);
     } catch (err) {
       console.warn('não deu para formar', source.key, err);
@@ -332,7 +354,7 @@ export class ParticleField {
     const prev = this.opts;
     this.opts = { ...prev, ...patch };
     this.material.uniforms.uSize.value = this.opts.size;
-    if (this.opts.glow !== prev.glow) this.syncBlending();
+    this.material.uniforms.uNoGlow.value = this.opts.glow ? 0 : 1;
     if (this.opts.count !== prev.count) {
       this.allocate(this.opts.count);
       // as nuvens foram amostradas para a quantidade antiga: forma tudo de novo
@@ -376,6 +398,7 @@ export class ParticleField {
     this.alpha = new Float32Array(count);
     this.grow = new Float32Array(count);
     this.formSize = new Float32Array(count).fill(1);
+    this.formOver = new Float32Array(count);
     this.size = new Float32Array(count);
     this.seed = new Float32Array(count);
     this.baseAlpha = new Float32Array(count);
@@ -415,6 +438,7 @@ export class ParticleField {
     this.geometry.setAttribute('aAlpha', new BufferAttribute(this.alpha, 1).setUsage(DynamicDrawUsage));
     this.geometry.setAttribute('aGrow', new BufferAttribute(this.grow, 1).setUsage(DynamicDrawUsage));
     this.geometry.setAttribute('aFormSize', new BufferAttribute(this.formSize, 1).setUsage(DynamicDrawUsage));
+    this.geometry.setAttribute('aFormOver', new BufferAttribute(this.formOver, 1).setUsage(DynamicDrawUsage));
     this.geometry.setAttribute('aSize', new BufferAttribute(this.size, 1));
     this.points.geometry = this.geometry;
   }
@@ -439,7 +463,7 @@ export class ParticleField {
     }
     this.release(slot);
     slot.cloud = cloud;
-    const { slotOf, target, order, delay, formSize } = this;
+    const { slotOf, target, order, delay, formSize, formOver } = this;
     const count = slotOf.length;
     const start = (Math.random() * count) | 0;
     let j = 0;
@@ -450,14 +474,11 @@ export class ParticleField {
       target[i] = j++;
       delay[i] = Math.random() * 0.55;
       formSize[i] = slot.opts.grain;
+      formOver[i] = slot.opts.glow ? 0 : 1;
     }
     this.geometry.attributes.aFormSize.needsUpdate = true;
+    this.geometry.attributes.aFormOver.needsUpdate = true;
     slot.formStart = this.time;
-  }
-
-  private syncBlending() {
-    this.material.blending = this.opts.glow ? AdditiveBlending : NormalBlending;
-    this.material.needsUpdate = true;
   }
 
   // ---------- eventos ----------
@@ -528,12 +549,14 @@ export class ParticleField {
     // áudio: sobe rápido, desce devagar
     const audio = this.opts.audio;
     const up = Math.min(1, dt * 18);
-    const down = Math.min(1, dt * 4);
+    const down = Math.min(1, dt * 5);
     const b = this.bassIn * audio;
     const e = this.energyIn * audio;
     this.bass += (b - this.bass) * (b > this.bass ? up : down);
     this.energy += (e - this.energy) * (e > this.energy ? up : down);
-    this.material.uniforms.uPulse.value = 1 + this.energy * 0.6;
+    // a poeira pulsa com os graves (sobem e descem a cada batida); a energia geral, quase sempre alta depois do
+    // ganho automático, só acelera a flutuação
+    this.material.uniforms.uPulse.value = 1 + this.bass * 0.7;
     this.driftTime += dt * (1 + this.energy * 2.5);
 
     // paleta: transição suave quando a capa muda
@@ -567,7 +590,7 @@ export class ParticleField {
       f.sy = Math.sin(rotY);
       f.cx = Math.cos(rotX);
       f.sx = Math.sin(rotX);
-      f.scale = so.height * 2 * this.halfH * (1 + this.bass * so.react * 0.12);
+      f.scale = so.height * 2 * this.halfH * (1 + this.bass * so.react * 0.16);
       const width = slot.cloud.aspect * so.height * 2 * this.halfH;
       const left = so.x * 2 * this.halfW - this.halfW;
       f.ax = so.align === 'left' ? left + width / 2 : left;
@@ -601,7 +624,8 @@ export class ParticleField {
     const drift = o.drift;
     const colorK = Math.min(1, dt * 3.5);
     // a poeira acende um pouco com a música
-    const dustAlpha = o.dustAlpha * (1 + this.energy * 0.8);
+    const dustAlpha = o.dustAlpha * (1 + this.bass * 0.7 + this.energy * 0.2) * Math.min(1, Math.sqrt(DUST_REF / Math.max(1, this.dustCount)));
+    let dustCount = 0;
 
     for (let i = 0; i < count; i++) {
       const i3 = i * 3;
@@ -636,7 +660,13 @@ export class ParticleField {
           cb = ink[2] * v;
         }
         ta = f.alpha;
-        if (f.hasReveal && cloud.positions[c3] > f.revealX) ta *= 0.25;
+        if (f.hasReveal && cloud.positions[c3] > f.revealX) {
+          // o que ainda não tocou fica apagado e na cor da poeira: contraste com a parte tocada
+          cr = dust[0] * 0.6;
+          cg = dust[1] * 0.6;
+          cb = dust[2] * 0.6;
+          ta *= 0.16;
+        }
       } else {
         const s = seed[i] * 50;
         tx = home[i3] + (Math.sin(t * 0.17 + s) * 0.35 + Math.sin(t * 0.07 + s * 0.3) * 0.25) * drift;
@@ -649,6 +679,7 @@ export class ParticleField {
         cg = dust[1] * sh;
         cb = dust[2] * sh;
         ta = baseAlpha[i] * dustAlpha;
+        dustCount++;
       }
 
       let vx = vel[i3] + (tx - pos[i3]) * spring * dt;
@@ -684,6 +715,8 @@ export class ParticleField {
       alpha[i] += (ta - alpha[i]) * colorK;
       grow[i] += ((forming ? 1 : 0) - grow[i]) * colorK;
     }
+
+    this.dustCount = dustCount;
 
     const attrs = this.geometry.attributes;
     attrs.position.needsUpdate = true;

@@ -108,7 +108,7 @@ setInterval(() => {
 
 const analyze = createAudioAnalyzer({
   onLevels: ({ bass, energy }) => field.setAudio(bass, energy),
-  onBeat: (strength) => field.kick('cover', 0.6 + strength * 1.2),
+  onBeat: (strength) => field.kick('cover', 0.8 + strength * 1.6),
 });
 
 loadFonts().then(() => {

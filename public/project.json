@@ -20,9 +20,9 @@
         ]
       },
       "clock24": { "order": 102, "text": "Relógio 24 horas", "type": "bool", "value": true },
-      "grains": { "order": 103, "text": "Quantidade de grãos", "type": "slider", "min": 6000, "max": 40000, "step": 1000, "value": 20000, "fraction": false },
-      "grainsize": { "order": 104, "text": "Tamanho do grão", "type": "slider", "min": 15, "max": 60, "value": 32, "fraction": false },
-      "audioreact": { "order": 105, "text": "Reação ao áudio (%)", "type": "slider", "min": 0, "max": 200, "value": 100, "fraction": false },
+      "grains": { "order": 103, "text": "Quantidade de grãos", "type": "slider", "min": 10000, "max": 150000, "step": 5000, "value": 60000, "fraction": false },
+      "grainsize": { "order": 104, "text": "Tamanho do grão", "type": "slider", "min": 15, "max": 60, "value": 28, "fraction": false },
+      "audioreact": { "order": 105, "text": "Reação ao áudio (%)", "type": "slider", "min": 0, "max": 300, "value": 100, "fraction": false },
       "glow": { "order": 106, "text": "Brilho dos grãos sobrepostos", "type": "bool", "value": true },
       "mouse": { "order": 107, "text": "Mouse empurra os grãos", "type": "bool", "value": true }
     }

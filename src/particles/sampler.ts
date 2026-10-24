@@ -31,10 +31,13 @@ export interface SampleOptions {
   count: number;
   /** espessura da forma extrudada, na escala da altura */
   depth: number;
+  /** fração dos grãos da frente que vai no contorno (0..1) */
+  outline: number;
 }
 
-const RES_H = 200; // altura do raster usado para amostrar
-const MAX_W = 1600;
+const RES_H = 240; // altura do raster usado para amostrar texto e desenho
+const IMAGE_RES = 360; // capa: mais pixels para os grãos pegarem os detalhes
+const MAX_W = 2000;
 
 interface Raster {
   w: number;
@@ -105,6 +108,7 @@ async function rasterize(source: ShapeSource): Promise<Raster> {
     const img = new Image();
     img.src = source.url;
     await img.decode();
+    h = IMAGE_RES;
     canvas.width = canvas.height = h;
     const r = (source.radius ?? 0) * h;
     ctx.beginPath();
@@ -161,7 +165,7 @@ function ellipsize(ctx: CanvasRenderingContext2D, text: string, max: number) {
   return text.slice(0, lo).trimEnd() + '…';
 }
 
-function buildCloud(r: Raster, { count, depth }: SampleOptions): ShapeCloud {
+function buildCloud(r: Raster, { count, depth, outline }: SampleOptions): ShapeCloud {
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
   const half = depth / 2;
@@ -180,11 +184,11 @@ function buildCloud(r: Raster, { count, depth }: SampleOptions): ShapeCloud {
 
   const pick = (list: Int32Array) => list[(Math.random() * list.length) | 0];
 
-  // frente cheia; com espessura, verso e laterais (pelos pixels de borda) completam o volume
-  const front = depth > 0 ? Math.round(count * 0.62) : count;
-  const back = depth > 0 ? Math.round(count * 0.18) : 0;
+  // a maior parte na frente (é o que se vê); com espessura, verso e laterais (pelos pixels de borda) dão o volume
+  const front = depth > 0 ? Math.round(count * 0.8) : count;
+  const back = depth > 0 ? Math.round(count * 0.06) : 0;
   for (let n = 0; n < count; n++) {
-    if (n < front) put(n, pick(r.fill), half);
+    if (n < front) put(n, pick(Math.random() < outline ? r.edge : r.fill), half);
     else if (n < front + back) put(n, pick(r.fill), -half);
     else put(n, pick(r.edge), -half + Math.random() * depth);
   }
