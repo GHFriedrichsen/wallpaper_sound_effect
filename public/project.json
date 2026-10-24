@@ -1,0 +1,29 @@
+{
+  "title": "Grãos",
+  "description": "Relógio, música tocando e clima feitos de grãos que reagem ao áudio. As cores vêm da capa da música.",
+  "type": "web",
+  "file": "index.html",
+  "tags": ["Music", "Abstract"],
+  "general": {
+    "supportsaudioprocessing": true,
+    "properties": {
+      "city": { "order": 100, "text": "Cidade (clima)", "type": "textinput", "value": "São Paulo" },
+      "units": {
+        "order": 101,
+        "text": "Temperatura",
+        "type": "combo",
+        "value": "celsius",
+        "options": [
+          { "label": "Celsius", "value": "celsius" },
+          { "label": "Fahrenheit", "value": "fahrenheit" }
+        ]
+      },
+      "clock24": { "order": 102, "text": "Relógio 24 horas", "type": "bool", "value": true },
+      "grains": { "order": 103, "text": "Quantidade de grãos", "type": "slider", "min": 6000, "max": 40000, "step": 1000, "value": 20000, "fraction": false },
+      "grainsize": { "order": 104, "text": "Tamanho do grão", "type": "slider", "min": 15, "max": 60, "value": 32, "fraction": false },
+      "audioreact": { "order": 105, "text": "Reação ao áudio (%)", "type": "slider", "min": 0, "max": 200, "value": 100, "fraction": false },
+      "glow": { "order": 106, "text": "Brilho dos grãos sobrepostos", "type": "bool", "value": true },
+      "mouse": { "order": 107, "text": "Mouse empurra os grãos", "type": "bool", "value": true }
+    }
+  }
+}
