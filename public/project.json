@@ -8,6 +8,16 @@
   "general": {
     "supportsaudioprocessing": true,
     "properties": {
+      "center": {
+        "order": 99,
+        "text": "No centro",
+        "type": "combo",
+        "value": "material",
+        "options": [
+          { "label": "Poeira que deforma com o som", "value": "material" },
+          { "label": "Capa da música", "value": "cover" }
+        ]
+      },
       "city": { "order": 100, "text": "Cidade (clima)", "type": "textinput", "value": "São Paulo" },
       "units": {
         "order": 101,

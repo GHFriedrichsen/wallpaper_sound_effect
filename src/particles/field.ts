@@ -15,6 +15,7 @@ import {
   ShaderMaterial,
   WebGLRenderer,
 } from 'three';
+import { Deformation } from './deform';
 import { sampleShape, type ShapeCloud, type ShapeSource } from './sampler';
 
 export type RGB = [number, number, number];
@@ -80,8 +81,8 @@ export interface SlotOptions {
   /** amplitude do balanço, em graus */
   swing: number;
   swingSpeed: number;
-  /** 'source': cor do pixel (capa); 'ink': cor de tinta da paleta, com o brilho do pixel */
-  color: 'source' | 'ink';
+  /** 'source': cor do pixel (capa); 'ink': cor de tinta da paleta, com o brilho do pixel; 'dust': cor da poeira */
+  color: 'source' | 'ink' | 'dust';
   /** opacidade dos grãos da forma */
   alpha: number;
   /** quanto a forma "respira" com os graves */
@@ -92,6 +93,10 @@ export interface SlotOptions {
   glow: boolean;
   /** fração dos grãos da frente que vai no contorno da forma (deixa as letras nítidas) */
   outline: number;
+  /** giro contínuo em torno do eixo vertical, rad/s */
+  spin?: number;
+  /** a forma se deforma com o som como um material (ver deform.ts); só uma forma por campo */
+  material?: boolean;
 }
 
 export const defaultPalette: Palette = {
@@ -175,6 +180,8 @@ interface SlotFrame {
   sx: number;
   elapsed: number;
   ink: boolean;
+  dust: boolean;
+  material: boolean;
   alpha: number;
   revealX: number;
   hasReveal: boolean;
@@ -218,9 +225,14 @@ export class ParticleField {
   private paletteTarget: Palette = clonePalette(defaultPalette);
 
   private bass = 0;
+  private mid = 0;
+  private treble = 0;
   private energy = 0;
   private bassIn = 0;
+  private midIn = 0;
+  private trebleIn = 0;
   private energyIn = 0;
+  private deform = new Deformation();
   private dustCount = 0;
 
   private halfW = 1;
@@ -330,9 +342,11 @@ export class ParticleField {
   }
 
   /** Nível atual do áudio, 0..1. Suavizado aqui dentro, a cada quadro. */
-  setAudio(bass: number, energy: number) {
+  setAudio(bass: number, energy: number, mid = 0, treble = 0) {
     this.bassIn = bass;
     this.energyIn = energy;
+    this.midIn = mid;
+    this.trebleIn = treble;
   }
 
   /** Empurrão nos grãos de uma forma (batida da música). */
@@ -340,7 +354,23 @@ export class ParticleField {
     const slot = this.slot(name);
     if (!slot.cloud) return;
     const s = strength * this.opts.audio;
-    const { vel, slotOf } = this;
+    const { vel, slotOf, pos } = this;
+    if (slot.opts.material) {
+      // onda de choque: empurra para fora a partir do centro e deixa a marca no material
+      this.deform.impact(Math.min(1, s));
+      const f = this.frames[slot.index];
+      for (let i = 0; i < slotOf.length; i++) {
+        if (slotOf[i] !== slot.index) continue;
+        const dx = pos[i * 3] - f.ax;
+        const dy = pos[i * 3 + 1] - f.ay;
+        const dz = pos[i * 3 + 2];
+        const k = (s * 2.2) / (Math.hypot(dx, dy, dz) + 0.3);
+        vel[i * 3] += dx * k;
+        vel[i * 3 + 1] += dy * k;
+        vel[i * 3 + 2] += dz * k;
+      }
+      return;
+    }
     for (let i = 0; i < slotOf.length; i++) {
       if (slotOf[i] !== slot.index) continue;
       vel[i * 3] += (Math.random() - 0.5) * s;
@@ -554,6 +584,11 @@ export class ParticleField {
     const e = this.energyIn * audio;
     this.bass += (b - this.bass) * (b > this.bass ? up : down);
     this.energy += (e - this.energy) * (e > this.energy ? up : down);
+    const m = this.midIn * audio;
+    const tr = this.trebleIn * audio;
+    this.mid += (m - this.mid) * (m > this.mid ? up : down);
+    this.treble += (tr - this.treble) * (tr > this.treble ? up : down);
+    this.deform.update(dt, Math.min(1, this.bass), Math.min(1, this.mid), Math.min(1, this.treble));
     // a poeira pulsa com os graves (sobem e descem a cada batida); a energia geral, quase sempre alta depois do
     // ganho automático, só acelera a flutuação
     this.material.uniforms.uPulse.value = 1 + this.bass * 0.7;
@@ -584,7 +619,7 @@ export class ParticleField {
       slot.dimNow += (slot.dim - slot.dimNow) * Math.min(1, dt * 2);
       f.on = slot.cloud !== null;
       if (!slot.cloud) continue;
-      const rotY = Math.sin(this.time * so.swingSpeed) * so.swing * deg + this.tiltY;
+      const rotY = Math.sin(this.time * so.swingSpeed) * so.swing * deg + this.time * (so.spin ?? 0) + this.tiltY;
       const rotX = this.tiltX;
       f.cy = Math.cos(rotY);
       f.sy = Math.sin(rotY);
@@ -597,6 +632,8 @@ export class ParticleField {
       f.ay = -(so.y * 2 * this.halfH - this.halfH);
       f.elapsed = this.time - slot.formStart;
       f.ink = so.color === 'ink';
+      f.dust = so.color === 'dust';
+      f.material = so.material ?? false;
       f.alpha = so.alpha * slot.dimNow;
       f.hasReveal = slot.revealNow < 0.999;
       f.revealX = (slot.revealNow - 0.5) * slot.cloud.aspect;
@@ -614,6 +651,13 @@ export class ParticleField {
     const formK = o.formSpeed;
     const freeK = 1.1;
     const formDamp = Math.exp(-2 * Math.sqrt(formK) * 0.72 * dt);
+    // o material é mais rígido que as outras formas: acompanha a deformação quase sem atraso
+    const matK = formK * 3;
+    const matDamp = Math.exp(-2 * Math.sqrt(matK) * 0.5 * dt);
+    const deform = this.deform;
+    // agudos: cada grão do material treme (independe do fps)
+    const shake = deform.shake * 5 * Math.sqrt(dt * 60);
+    const sparkle = this.treble;
     const freeDamp = Math.exp(-2 * Math.sqrt(freeK) * 0.9 * dt);
 
     const mr = o.mouseRadius * 2 * this.halfH;
@@ -638,21 +682,45 @@ export class ParticleField {
       if (forming) {
         const cloud = slots[si].cloud!;
         const c3 = target[i] * 3;
-        const lx = cloud.positions[c3] * f.scale;
-        const ly = cloud.positions[c3 + 1] * f.scale;
-        const lz = cloud.positions[c3 + 2] * f.scale;
+        let lx = cloud.positions[c3] * f.scale;
+        let ly = cloud.positions[c3 + 1] * f.scale;
+        let lz = cloud.positions[c3 + 2] * f.scale;
+        let strain = 0;
+        if (f.material) {
+          const px = cloud.positions[c3];
+          const py = cloud.positions[c3 + 1];
+          const pz = cloud.positions[c3 + 2];
+          const len = Math.hypot(px, py, pz) || 1;
+          const r = deform.radius(px / len, py / len, pz / len);
+          lx *= r;
+          ly *= r;
+          lz *= r;
+          strain = Math.min(1, Math.abs(r - 1 - deform.breath) * 4);
+          if (shake > 0.001) {
+            const sk = shake * len;
+            vel[i3] += (Math.random() - 0.5) * sk;
+            vel[i3 + 1] += (Math.random() - 0.5) * sk;
+            vel[i3 + 2] += (Math.random() - 0.5) * sk;
+          }
+        }
         const x1 = lx * f.cy + lz * f.sy;
         const z1 = -lx * f.sy + lz * f.cy;
         tx = f.ax + x1;
         ty = f.ay + ly * f.cx - z1 * f.sx;
         tz = ly * f.sx + z1 * f.cx;
-        spring = formK;
-        damp = formDamp;
+        spring = f.material ? matK : formK;
+        damp = f.material ? matDamp : formDamp;
 
         cr = cloud.colors[c3];
         cg = cloud.colors[c3 + 1];
         cb = cloud.colors[c3 + 2];
-        if (f.ink) {
+        if (f.dust) {
+          // onde o material está mais deformado, a poeira esquenta até a cor de tinta
+          const sh = shade[i] * (1 - strain) + strain;
+          cr = (dust[0] + (ink[0] - dust[0]) * strain) * sh;
+          cg = (dust[1] + (ink[1] - dust[1]) * strain) * sh;
+          cb = (dust[2] + (ink[2] - dust[2]) * strain) * sh;
+        } else if (f.ink) {
           // texto desenhado em cinza: o brilho do pixel vira a intensidade da tinta
           const v = cr;
           cr = ink[0] * v;
@@ -660,6 +728,8 @@ export class ParticleField {
           cb = ink[2] * v;
         }
         ta = f.alpha;
+        // agudos fazem os grãos do material cintilar
+        if (f.material) ta *= 0.7 + 0.3 * strain + sparkle * 0.5 * Math.sin(this.time * 31 + seed[i] * 97);
         if (f.hasReveal && cloud.positions[c3] > f.revealX) {
           // o que ainda não tocou fica apagado e na cor da poeira: contraste com a parte tocada
           cr = dust[0] * 0.6;

@@ -3,7 +3,7 @@ import { startDemo } from './demo';
 import { loadFonts } from './fonts';
 import { layout, progressAspect, titleMaxAspect } from './layout';
 import { defaultPalette, ParticleField } from './particles/field';
-import { clockShape, coverShape, progressShape, titleShape, weatherShape } from './shapes';
+import { clockShape, coverShape, materialShape, progressShape, titleShape, weatherShape } from './shapes';
 import { createAudioAnalyzer } from './wallpaper/audio';
 import { isWallpaperEngine } from './wallpaper/engine';
 import { connectMedia, type MediaHandlers, type Track } from './wallpaper/media';
@@ -14,6 +14,8 @@ const settings = {
   city: 'São Paulo',
   unit: 'C' as 'C' | 'F',
   clock24: true,
+  /** o que fica no meio da tela: a capa em grãos ou a esfera de poeira que deforma com o som */
+  center: 'material' as 'material' | 'cover',
 };
 /** fontes carregadas: antes disso o texto viraria grãos na fonte errada */
 let ready = false;
@@ -24,6 +26,10 @@ const weather = new WeatherService((w) => field.setShape('weather', w ? weatherS
 // o Wallpaper Engine chama isto logo ao carregar (com todas as propriedades) e depois a cada mudança no painel
 window.wallpaperPropertyListener = {
   applyUserProperties(p) {
+    if (p.center) {
+      settings.center = p.center.value === 'cover' ? 'cover' : 'material';
+      updateCenter();
+    }
     if (p.city) settings.city = String(p.city.value);
     if (p.units) settings.unit = p.units.value === 'fahrenheit' ? 'F' : 'C';
     if (p.clock24) {
@@ -62,6 +68,13 @@ let track: Track | null = null;
 let playing = false;
 let timeline = { position: 0, duration: 0, at: 0 };
 let coverToken = 0;
+let coverUrl: string | null = null;
+
+function updateCenter() {
+  const material = settings.center === 'material';
+  field.setShape('material', material ? materialShape : null);
+  field.setShape('cover', !material && coverUrl ? coverShape(coverUrl) : null);
+}
 
 const media: MediaHandlers = {
   onTrack(t) {
@@ -71,12 +84,12 @@ const media: MediaHandlers = {
   },
   async onCover(cover) {
     const token = ++coverToken;
+    coverUrl = cover?.url ?? null;
+    updateCenter();
     if (!cover) {
-      field.setShape('cover', null);
       field.setPalette(defaultPalette);
       return;
     }
-    field.setShape('cover', coverShape(cover.url));
     try {
       const [primary, secondary] = cover.colors ?? (await extractColors(cover.url));
       if (token === coverToken) field.setPalette(paletteFrom(primary, secondary));
@@ -107,9 +120,11 @@ setInterval(() => {
 // ---------- início ----------
 
 const analyze = createAudioAnalyzer({
-  onLevels: ({ bass, energy }) => field.setAudio(bass, energy),
-  onBeat: (strength) => field.kick('cover', 0.8 + strength * 1.6),
+  onLevels: ({ bass, mid, treble, energy }) => field.setAudio(bass, energy, mid, treble),
+  onBeat: (strength) => (settings.center === 'material' ? field.kick('material', strength) : field.kick('cover', 0.8 + strength * 1.6)),
 });
+
+updateCenter();
 
 loadFonts().then(() => {
   ready = true;

@@ -1,10 +1,12 @@
-// Lê o espectro do Wallpaper Engine e resume em graves, energia geral e batidas.
+// Lê o espectro do Wallpaper Engine e resume em graves, médios, agudos, energia geral e batidas.
 // Os valores crus dependem muito do volume do sistema e da música, então passam por um ganho automático:
 // cada nível é dividido pelo pico recente, e música baixa reage quase tanto quanto música alta.
 
 export interface AudioLevels {
   /** 0..1, já normalizado */
   bass: number;
+  mid: number;
+  treble: number;
   energy: number;
 }
 
@@ -15,16 +17,16 @@ export interface AudioHandlers {
 }
 
 /** abaixo disso é silêncio: não amplifica ruído */
-const FLOOR = { bass: 0.04, energy: 0.015 };
+const FLOOR = { bass: 0.04, mid: 0.02, treble: 0.01, energy: 0.015 };
 /** quanto o pico cai por chamada (~30 por segundo): ~4 s para cair pela metade */
 const PEAK_DECAY = 0.995;
 
 export function createAudioAnalyzer({ onLevels, onBeat }: AudioHandlers) {
-  const peak = { bass: FLOOR.bass, energy: FLOOR.energy };
+  const peak = { ...FLOOR };
   let avgBass = 0;
   let lastBeat = 0;
 
-  const normalize = (key: 'bass' | 'energy', raw: number) => {
+  const normalize = (key: keyof typeof FLOOR, raw: number) => {
     peak[key] = Math.max(raw, peak[key] * PEAK_DECAY, FLOOR[key]);
     // raiz: realça os níveis médios, que é onde a maior parte da música fica
     return Math.sqrt(Math.min(1, raw / peak[key]));
@@ -37,9 +39,12 @@ export function createAudioAnalyzer({ onLevels, onBeat }: AudioHandlers) {
       for (let i = from; i < to; i++) sum += Math.min(1, spectrum[i]) + Math.min(1, spectrum[i + half]);
       return sum / ((to - from) * 2);
     };
+    // as 64 faixas vão do grave ao agudo: 0..5 graves, 6..23 médios, 24..63 agudos
     const bass = normalize('bass', band(0, 6));
+    const mid = normalize('mid', band(6, 24));
+    const treble = normalize('treble', band(24, half));
     const energy = normalize('energy', band(0, half));
-    onLevels({ bass, energy });
+    onLevels({ bass, mid, treble, energy });
 
     // batida = grave acima da média recente
     const now = performance.now();

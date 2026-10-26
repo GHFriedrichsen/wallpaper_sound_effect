@@ -15,7 +15,8 @@ export interface TextLine {
 export type ShapeSource =
   | { kind: 'text'; key: string; lines: TextLine[]; maxAspect?: number }
   | { kind: 'image'; key: string; url: string; radius?: number }
-  | { kind: 'draw'; key: string; aspect: number; draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void };
+  | { kind: 'draw'; key: string; aspect: number; draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void }
+  | { kind: 'sphere'; key: string };
 
 export interface ShapeCloud {
   count: number;
@@ -56,6 +57,7 @@ const rasterCache = new Map<string, Promise<Raster>>();
 const CACHE_MAX = 24;
 
 export async function sampleShape(source: ShapeSource, opts: SampleOptions): Promise<ShapeCloud> {
+  if (source.kind === 'sphere') return sphereCloud(opts.count);
   let raster = rasterCache.get(source.key);
   if (!raster) {
     raster = rasterize(source);
@@ -66,7 +68,23 @@ export async function sampleShape(source: ShapeSource, opts: SampleOptions): Pro
   return buildCloud(await raster, opts);
 }
 
-async function rasterize(source: ShapeSource): Promise<Raster> {
+/** Esfera de diâmetro 1: a maior parte dos grãos na casca, o resto enchendo o miolo. */
+function sphereCloud(count: number): ShapeCloud {
+  const positions = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    // direção uniforme na esfera
+    const z = Math.random() * 2 - 1;
+    const a = Math.random() * Math.PI * 2;
+    const s = Math.sqrt(1 - z * z);
+    const r = 0.5 * (Math.random() < 0.85 ? 0.95 + Math.random() * 0.05 : Math.cbrt(Math.random()));
+    positions[i * 3] = Math.cos(a) * s * r;
+    positions[i * 3 + 1] = Math.sin(a) * s * r;
+    positions[i * 3 + 2] = z * r;
+  }
+  return { count, aspect: 1, positions, colors: new Float32Array(count * 3).fill(1) };
+}
+
+async function rasterize(source: Exclude<ShapeSource, { kind: 'sphere' }>): Promise<Raster> {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   let h = RES_H;

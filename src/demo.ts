@@ -45,13 +45,17 @@ export function startDemo(media: MediaHandlers, onSpectrum: (spectrum: number[])
     play();
   }, DURATION * 1000);
 
-  // 120 bpm: graves batendo a cada 0,5 s, resto do espectro oscilando
+  // 120 bpm: graves batendo a cada 0,5 s, médios oscilando e chimbal nos agudos a cada 0,25 s;
+  // a cada 8 s um trecho mais forte (refrão), para ver o material passar do limite
   const spectrum = new Array<number>(128).fill(0);
   setInterval(() => {
     const t = (performance.now() - started) / 1000;
-    const kick = Math.exp(-((t % 0.5) * 9));
+    const loud = t % 8 > 6 ? 1 : 0.55;
+    const kick = Math.exp(-((t % 0.5) * 9)) * loud;
+    const hat = Math.exp(-((t % 0.25) * 30)) * loud;
     for (let i = 0; i < 64; i++) {
-      const v = i < 6 ? kick * 0.9 : 0.25 * Math.abs(Math.sin(t * 2 + i * 0.4)) * (1 - i / 80);
+      const v =
+        i < 6 ? kick * 0.9 : i < 24 ? 0.35 * loud * Math.abs(Math.sin(t * 2 + i * 0.4)) : 0.05 + hat * 0.3 * (1 - i / 90);
       spectrum[i] = spectrum[i + 64] = v;
     }
     onSpectrum(spectrum);

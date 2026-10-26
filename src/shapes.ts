@@ -19,6 +19,9 @@ export function coverShape(url: string): ShapeSource {
   return { kind: 'image', key: `cover:${url.length}:${url.slice(-48)}`, url, radius: 0.1 };
 }
 
+/** Esfera de poeira que se deforma com o som (modo material). */
+export const materialShape: ShapeSource = { kind: 'sphere', key: 'material' };
+
 export function progressShape(aspect: number): ShapeSource {
   return {
     kind: 'draw',
