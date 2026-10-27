@@ -8,6 +8,8 @@ export interface AudioLevels {
   mid: number;
   treble: number;
   energy: number;
+  /** 0..1: onde está o "centro" do espectro agora, do mais grave ao mais agudo que esta música já teve */
+  tone: number;
 }
 
 export interface AudioHandlers {
@@ -25,6 +27,10 @@ export function createAudioAnalyzer({ onLevels, onBeat }: AudioHandlers) {
   const peak = { ...FLOOR };
   let avgBass = 0;
   let lastBeat = 0;
+  // faixa de centroides desta música: abre na hora e fecha devagar, para o tom se adaptar a cada música
+  let toneLo = 0.2;
+  let toneHi = 0.3;
+  let tone = 0.5;
 
   const normalize = (key: keyof typeof FLOOR, raw: number) => {
     peak[key] = Math.max(raw, peak[key] * PEAK_DECAY, FLOOR[key]);
@@ -44,7 +50,22 @@ export function createAudioAnalyzer({ onLevels, onBeat }: AudioHandlers) {
     const mid = normalize('mid', band(6, 24));
     const treble = normalize('treble', band(24, half));
     const energy = normalize('energy', band(0, half));
-    onLevels({ bass, mid, treble, energy });
+
+    // centroide espectral: média das faixas pesada pelo volume de cada uma
+    let sum = 0;
+    let weighted = 0;
+    for (let i = 0; i < half; i++) {
+      const v = Math.min(1, spectrum[i]) + Math.min(1, spectrum[i + half]);
+      sum += v;
+      weighted += v * i;
+    }
+    if (sum > 0.05) {
+      const c = weighted / sum / half;
+      toneLo = Math.min(c, toneLo + (c - toneLo) * 0.002);
+      toneHi = Math.max(c, toneHi - (toneHi - c) * 0.002);
+      tone = (c - toneLo) / Math.max(0.02, toneHi - toneLo);
+    }
+    onLevels({ bass, mid, treble, energy, tone });
 
     // batida = grave acima da média recente
     const now = performance.now();

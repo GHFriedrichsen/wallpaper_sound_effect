@@ -2,6 +2,7 @@ import './styles.css';
 import { startDemo } from './demo';
 import { loadFonts } from './fonts';
 import { layout, progressAspect, titleMaxAspect } from './layout';
+import { PatternPicker } from './particles/cymatics';
 import { defaultPalette, ParticleField } from './particles/field';
 import { clockShape, coverShape, materialShape, progressShape, titleShape, weatherShape } from './shapes';
 import { createAudioAnalyzer } from './wallpaper/audio';
@@ -40,7 +41,9 @@ window.wallpaperPropertyListener = {
     if (p.grainsize) field.update({ size: Number(p.grainsize.value) / 10 });
     if (p.audioreact) field.update({ audio: Number(p.audioreact.value) / 100 });
     if (p.glow) field.update({ glow: Boolean(p.glow.value) });
-    if (p.mouse) field.update({ mouseForce: p.mouse.value ? 70 : 0 });
+    // 0 desliga; 100% é a força de antes
+    if (p.mouseforce) field.update({ mouseForce: (Number(p.mouseforce.value) / 100) * 70 });
+    if (p.mouseradius) field.update({ mouseRadius: Number(p.mouseradius.value) / 100 });
     if (ready) weather.configure(settings.city, settings.unit);
   },
   applyGeneralProperties(p) {
@@ -70,9 +73,11 @@ let timeline = { position: 0, duration: 0, at: 0 };
 let coverToken = 0;
 let coverUrl: string | null = null;
 
+const picker = new PatternPicker();
+
 function updateCenter() {
   const material = settings.center === 'material';
-  field.setShape('material', material ? materialShape : null);
+  field.setShape('material', material ? materialShape(picker.current) : null, true);
   field.setShape('cover', !material && coverUrl ? coverShape(coverUrl) : null);
 }
 
@@ -120,8 +125,19 @@ setInterval(() => {
 // ---------- início ----------
 
 const analyze = createAudioAnalyzer({
-  onLevels: ({ bass, mid, treble, energy }) => field.setAudio(bass, energy, mid, treble),
-  onBeat: (strength) => (settings.center === 'material' ? field.kick('material', strength) : field.kick('cover', 0.8 + strength * 1.6)),
+  onLevels: ({ bass, mid, treble, energy, tone }) => {
+    field.setAudio(bass, energy, mid, treble);
+    // a figura muda com o tom: os grãos migram para as linhas nodais da nova
+    if (picker.update(energy, tone)) updateCenter();
+  },
+  onBeat: (strength) => {
+    if (settings.center !== 'material') {
+      field.kick('cover', 0.8 + strength * 1.6);
+      return;
+    }
+    field.kick('material', strength);
+    if (picker.beat(strength)) updateCenter();
+  },
 });
 
 updateCenter();

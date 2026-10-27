@@ -1,5 +1,6 @@
 // O que cada forma desenha antes de virar grãos.
 import { fonts } from './fonts';
+import { restPattern, type Pattern } from './particles/cymatics';
 import type { ShapeSource, TextLine } from './particles/sampler';
 import type { Track } from './wallpaper/media';
 import type { Sky, Weather } from './wallpaper/weather';
@@ -19,8 +20,11 @@ export function coverShape(url: string): ShapeSource {
   return { kind: 'image', key: `cover:${url.length}:${url.slice(-48)}`, url, radius: 0.1 };
 }
 
-/** Esfera de poeira que se deforma com o som (modo material). */
-export const materialShape: ShapeSource = { kind: 'sphere', key: 'material' };
+/** Esfera de poeira que se deforma com o som (modo material), desenhando a figura do padrão. */
+export function materialShape(pattern: Pattern = restPattern): ShapeSource {
+  const { l, m, rx, ry } = pattern;
+  return { kind: 'sphere', key: `material:${l}:${m}:${rx.toFixed(3)}:${ry.toFixed(3)}`, pattern };
+}
 
 export function progressShape(aspect: number): ShapeSource {
   return {

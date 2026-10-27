@@ -34,7 +34,8 @@
       "grainsize": { "order": 104, "text": "Tamanho do grão", "type": "slider", "min": 15, "max": 60, "value": 28, "fraction": false },
       "audioreact": { "order": 105, "text": "Reação ao áudio (%)", "type": "slider", "min": 0, "max": 300, "value": 100, "fraction": false },
       "glow": { "order": 106, "text": "Brilho dos grãos sobrepostos", "type": "bool", "value": true },
-      "mouse": { "order": 107, "text": "Mouse empurra os grãos", "type": "bool", "value": true }
+      "mouseforce": { "order": 107, "text": "Força do mouse (%)", "type": "slider", "min": 0, "max": 300, "value": 100, "fraction": false },
+      "mouseradius": { "order": 108, "text": "Alcance do mouse", "type": "slider", "min": 5, "max": 40, "value": 16, "fraction": false }
     }
   }
 }

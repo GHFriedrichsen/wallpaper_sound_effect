@@ -364,7 +364,8 @@ export class ParticleField {
         const dx = pos[i * 3] - f.ax;
         const dy = pos[i * 3 + 1] - f.ay;
         const dz = pos[i * 3 + 2];
-        const k = (s * 2.2) / (Math.hypot(dx, dy, dz) + 0.3);
+        const w = slot.cloud.wave ? Math.abs(slot.cloud.wave[this.target[i]]) : 1;
+        const k = (s * 1.2 * w) / (Math.hypot(dx, dy, dz) + 0.3);
         vel[i * 3] += dx * k;
         vel[i * 3 + 1] += dy * k;
         vel[i * 3 + 2] += dz * k;
@@ -691,13 +692,15 @@ export class ParticleField {
           const py = cloud.positions[c3 + 1];
           const pz = cloud.positions[c3 + 2];
           const len = Math.hypot(px, py, pz) || 1;
-          const r = deform.radius(px / len, py / len, pz / len);
+          const r = deform.radius(px / len, py / len, pz / len, cloud.wave ? cloud.wave[target[i]] : 0);
           lx *= r;
           ly *= r;
           lz *= r;
-          strain = Math.min(1, Math.abs(r - 1 - deform.breath) * 4);
-          if (shake > 0.001) {
-            const sk = shake * len;
+          strain = Math.min(1, Math.abs(r - 1 - deform.breath) * 2.5);
+          // nas linhas nodais (wave ≈ 0) a superfície não vibra: só os ventres tremem, e a figura fica nítida
+          const still = cloud.wave ? Math.abs(cloud.wave[target[i]]) : 1;
+          if (shake > 0.001 && still > 0.1) {
+            const sk = shake * len * still;
             vel[i3] += (Math.random() - 0.5) * sk;
             vel[i3 + 1] += (Math.random() - 0.5) * sk;
             vel[i3 + 2] += (Math.random() - 0.5) * sk;
@@ -715,8 +718,9 @@ export class ParticleField {
         cg = cloud.colors[c3 + 1];
         cb = cloud.colors[c3 + 2];
         if (f.dust) {
-          // onde o material está mais deformado, a poeira esquenta até a cor de tinta
-          const sh = shade[i] * (1 - strain) + strain;
+          // onde o material está mais deformado, a poeira esquenta até a cor de tinta;
+          // o brilho do ponto separa as linhas da figura (claras) da membrana (escura)
+          const sh = (shade[i] * (1 - strain) + strain) * cr;
           cr = (dust[0] + (ink[0] - dust[0]) * strain) * sh;
           cg = (dust[1] + (ink[1] - dust[1]) * strain) * sh;
           cb = (dust[2] + (ink[2] - dust[2]) * strain) * sh;
