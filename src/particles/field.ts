@@ -15,6 +15,7 @@ import {
   ShaderMaterial,
   WebGLRenderer,
 } from 'three';
+import { Cymatics, type Note } from './cymatics';
 import { Deformation } from './deform';
 import { sampleShape, type ShapeCloud, type ShapeSource } from './sampler';
 
@@ -233,6 +234,7 @@ export class ParticleField {
   private trebleIn = 0;
   private energyIn = 0;
   private deform = new Deformation();
+  private cymatics = new Cymatics();
   private dustCount = 0;
 
   private halfW = 1;
@@ -347,6 +349,11 @@ export class ParticleField {
     this.energyIn = energy;
     this.midIn = mid;
     this.trebleIn = treble;
+  }
+
+  /** Notas que estão soando: cada uma faz a esfera de poeira vibrar no seu modo (ver cymatics.ts). */
+  setNotes(notes: Note[]) {
+    this.cymatics.setNotes(notes);
   }
 
   /** Empurrão nos grãos de uma forma (batida da música). */
@@ -590,6 +597,9 @@ export class ParticleField {
     this.mid += (m - this.mid) * (m > this.mid ? up : down);
     this.treble += (tr - this.treble) * (tr > this.treble ? up : down);
     this.deform.update(dt, Math.min(1, this.bass), Math.min(1, this.mid), Math.min(1, this.treble));
+    for (const slot of this.slots) {
+      if (slot.opts.material && slot.cloud) this.cymatics.step(dt, slot.cloud, Math.min(1, Math.max(this.mid, this.treble, this.bass * 0.6)));
+    }
     // a poeira pulsa com os graves (sobem e descem a cada batida); a energia geral, quase sempre alta depois do
     // ganho automático, só acelera a flutuação
     this.material.uniforms.uPulse.value = 1 + this.bass * 0.7;
@@ -691,7 +701,7 @@ export class ParticleField {
           const px = cloud.positions[c3];
           const py = cloud.positions[c3 + 1];
           const pz = cloud.positions[c3 + 2];
-          const len = Math.hypot(px, py, pz) || 1;
+          const len = Math.sqrt(px * px + py * py + pz * pz) || 1;
           const r = deform.radius(px / len, py / len, pz / len, cloud.wave ? cloud.wave[target[i]] : 0);
           lx *= r;
           ly *= r;
@@ -732,8 +742,12 @@ export class ParticleField {
           cb = ink[2] * v;
         }
         ta = f.alpha;
-        // agudos fazem os grãos do material cintilar
-        if (f.material) ta *= 0.7 + 0.3 * strain + sparkle * 0.5 * Math.sin(this.time * 31 + seed[i] * 97);
+        // agudos fazem os grãos do material cintilar; a metade de trás da esfera apaga, para a figura da frente
+        // não se misturar com a de trás
+        if (f.material) {
+          const front = Math.min(1, Math.max(0, (tz / (0.5 * f.scale) + 1) / 2));
+          ta *= (0.7 + 0.3 * strain + sparkle * 0.5 * Math.sin(this.time * 31 + seed[i] * 97)) * (0.15 + 0.85 * front);
+        }
         if (f.hasReveal && cloud.positions[c3] > f.revealX) {
           // o que ainda não tocou fica apagado e na cor da poeira: contraste com a parte tocada
           cr = dust[0] * 0.6;

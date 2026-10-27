@@ -1,8 +1,8 @@
 // Esfera de poeira que se comporta como um material sob som forte (deformação mecânica e acústica não linear).
 // Volume baixo quase não mexe; perto do máximo a resposta cresce mais que proporcional.
 //
-// - a figura (cymatics.ts): a superfície vibra numa onda estacionária; os ventres sobem e descem formando lobos,
-//   as linhas nodais ficam paradas. Com volume alto a onda ganha harmônicos e a vibração fica "quadrada", como uma
+// - a figura (cymatics.ts): a superfície vibra na onda estacionária das notas que estão soando; os ventres sobem
+//   e descem formando lobos, as linhas nodais ficam paradas. Com volume alto a onda ganha harmônicos e a vibração fica "quadrada", como uma
 //   onda sonora forte a caminho de virar choque.
 // - graves: um pouco de compressão e um modo de "gelatina" que achata e estica. É um oscilador de Duffing:
 //   a mola endurece com a amplitude, então pancada forte vibra mais rápido que pancada fraca.

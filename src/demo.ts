@@ -45,21 +45,23 @@ export function startDemo(media: MediaHandlers, onSpectrum: (spectrum: number[])
     play();
   }, DURATION * 1000);
 
-  // 120 bpm: graves batendo a cada 0,5 s, médios oscilando e chimbal nos agudos a cada 0,25 s;
-  // a cada 8 s um trecho mais forte (refrão), para ver o material passar do limite; uma "melodia" sobe e desce
-  // pelo espectro a cada 3 s, para a figura da cimática mudar
+  // 120 bpm: graves batendo a cada 0,5 s e chimbal nos agudos a cada 0,25 s; a cada 8 s um trecho mais forte
+  // (refrão), para ver o material passar do limite. Por cima, uma melodia de notas que duram 2 s, às vezes
+  // com uma segunda nota junto (acorde): a figura da cimática segue as notas
+  const melody = [12, 18, 12, 26, 33, 26, 40, 18];
+  const chord = [0, 0, 7, 0, 0, 9, 0, 0];
   const spectrum = new Array<number>(128).fill(0);
   setInterval(() => {
     const t = (performance.now() - started) / 1000;
     const loud = t % 8 > 6 ? 1 : 0.55;
     const kick = Math.exp(-((t % 0.5) * 9)) * loud;
     const hat = Math.exp(-((t % 0.25) * 30)) * loud;
-    const note = 8 + ((Math.floor(t / 3) * 13) % 48);
+    const step = Math.floor(t / 2) % melody.length;
+    const peak = (center: number, v: number, i: number) => v * Math.exp(-(((i - center) / 1.2) ** 2));
     for (let i = 0; i < 64; i++) {
-      const melody = 0.6 * loud * Math.exp(-(((i - note) / 3) ** 2));
-      const base = i < 6 ? kick * 0.9 : i < 24 ? 0.35 * loud * Math.abs(Math.sin(t * 2 + i * 0.4)) : 0.05 + hat * 0.3 * (1 - i / 90);
-      const v = base + melody;
-      spectrum[i] = spectrum[i + 64] = v;
+      const base = i < 6 ? kick * 0.9 : 0.18 * loud * (1 - i / 70) + (i >= 24 ? hat * 0.3 * (1 - i / 90) : 0);
+      const notes = peak(melody[step], 0.5 * loud, i) + (chord[step] ? peak(melody[step] + chord[step], 0.35 * loud, i) : 0);
+      spectrum[i] = spectrum[i + 64] = base + notes;
     }
     onSpectrum(spectrum);
   }, 33);

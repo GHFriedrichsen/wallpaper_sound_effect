@@ -1,7 +1,7 @@
 // Transforma texto, imagem ou um desenho de canvas numa nuvem de pontos.
 // Adaptado do sampler do portfolio (github.com/GHFriedrichsen/portifolio), que só fazia logos quadrados:
 // aqui a forma pode ter qualquer proporção, porque relógio, título e clima são largos e baixos.
-import { cymaticCloud, restPattern, type Pattern } from './cymatics';
+import { sphereCloud } from './cymatics';
 
 export interface TextLine {
   text: string;
@@ -17,7 +17,7 @@ export type ShapeSource =
   | { kind: 'text'; key: string; lines: TextLine[]; maxAspect?: number }
   | { kind: 'image'; key: string; url: string; radius?: number }
   | { kind: 'draw'; key: string; aspect: number; draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void }
-  | { kind: 'sphere'; key: string; pattern?: Pattern };
+  | { kind: 'sphere'; key: string };
 
 export interface ShapeCloud {
   count: number;
@@ -27,7 +27,7 @@ export interface ShapeCloud {
   positions: Float32Array;
   /** rgb 0..1 por ponto, tirado do pixel */
   colors: Float32Array;
-  /** esfera: quanto cada ponto sobe e desce na onda estacionária (-1..1; 0 = linha nodal) */
+  /** esfera: quanto cada ponto sobe e desce na onda estacionária agora (-1..1; 0 = linha nodal) */
   wave?: Float32Array;
 }
 
@@ -60,7 +60,7 @@ const rasterCache = new Map<string, Promise<Raster>>();
 const CACHE_MAX = 24;
 
 export async function sampleShape(source: ShapeSource, opts: SampleOptions): Promise<ShapeCloud> {
-  if (source.kind === 'sphere') return cymaticCloud(opts.count, source.pattern ?? restPattern);
+  if (source.kind === 'sphere') return sphereCloud(opts.count);
   let raster = rasterCache.get(source.key);
   if (!raster) {
     raster = rasterize(source);

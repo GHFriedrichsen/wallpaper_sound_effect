@@ -2,7 +2,6 @@ import './styles.css';
 import { startDemo } from './demo';
 import { loadFonts } from './fonts';
 import { layout, progressAspect, titleMaxAspect } from './layout';
-import { PatternPicker } from './particles/cymatics';
 import { defaultPalette, ParticleField } from './particles/field';
 import { clockShape, coverShape, materialShape, progressShape, titleShape, weatherShape } from './shapes';
 import { createAudioAnalyzer } from './wallpaper/audio';
@@ -73,11 +72,9 @@ let timeline = { position: 0, duration: 0, at: 0 };
 let coverToken = 0;
 let coverUrl: string | null = null;
 
-const picker = new PatternPicker();
-
 function updateCenter() {
   const material = settings.center === 'material';
-  field.setShape('material', material ? materialShape(picker.current) : null, true);
+  field.setShape('material', material ? materialShape : null);
   field.setShape('cover', !material && coverUrl ? coverShape(coverUrl) : null);
 }
 
@@ -125,19 +122,11 @@ setInterval(() => {
 // ---------- início ----------
 
 const analyze = createAudioAnalyzer({
-  onLevels: ({ bass, mid, treble, energy, tone }) => {
+  onLevels: ({ bass, mid, treble, energy, notes }) => {
     field.setAudio(bass, energy, mid, treble);
-    // a figura muda com o tom: os grãos migram para as linhas nodais da nova
-    if (picker.update(energy, tone)) updateCenter();
+    field.setNotes(notes);
   },
-  onBeat: (strength) => {
-    if (settings.center !== 'material') {
-      field.kick('cover', 0.8 + strength * 1.6);
-      return;
-    }
-    field.kick('material', strength);
-    if (picker.beat(strength)) updateCenter();
-  },
+  onBeat: (strength) => (settings.center === 'material' ? field.kick('material', strength) : field.kick('cover', 0.8 + strength * 1.6)),
 });
 
 updateCenter();
