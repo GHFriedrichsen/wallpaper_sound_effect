@@ -40,7 +40,8 @@ os grãos se juntam nas linhas nodais e desenham a figura, e o resto da superfí
 - **silêncio**: volta para a esfera lisa.
 
 No painel do wallpaper dá para mudar a cidade do clima, °C/°F, relógio 12/24 h, quantidade e tamanho dos
-grãos, intensidade da reação ao áudio, brilho e se o mouse empurra os grãos.
+grãos, intensidade da reação ao áudio, brilho e a força e o alcance com que o mouse empurra os grãos (força 0
+desliga).
 
 ## Estrutura
 
